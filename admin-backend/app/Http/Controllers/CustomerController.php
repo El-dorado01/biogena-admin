@@ -9,6 +9,64 @@ use Illuminate\Support\Facades\Log;
 
 class CustomerController extends Controller
 {
+    protected function sealRequest(string $method, string $endpoint, array $data = [], array $query = [], int $retries = 2)
+    {
+        $sealApiUrl = config('services.seal.api_base_url') . $endpoint;
+        $sealApiToken = config('services.seal.api_token');
+
+        $fullUrl = $sealApiUrl;
+        if (!empty($query)) {
+            $fullUrl .= (strpos($sealApiUrl, '?') === false ? '?' : '&') . http_build_query($query);
+        }
+
+        for ($attempt = 1; $attempt <= $retries; $attempt++) {
+            Log::info('Seal API Request:', [
+                'attempt' => $attempt,
+                'method' => $method,
+                'url' => $fullUrl,
+                'data' => $data,
+                'headers' => ['X-Seal-Token' => substr($sealApiToken, 0, 10) . '...'],
+            ]);
+
+            $response = Http::withHeaders([
+                'X-Seal-Token' => $sealApiToken,
+                'Content-Type' => 'application/json',
+            ])->$method($sealApiUrl, empty($query) ? $data : array_merge($data, $query));
+
+            $responseData = $response->json();
+
+            // Log::info('Seal API Response:', [
+            //     'attempt' => $attempt,
+            //     'status' => $response->status(),
+            //     'body' => $responseData,
+            // ]);
+
+            if ($response->successful()) {
+                return $responseData ?: [];
+            }
+
+            Log::error('Seal API Error:', [
+                'attempt' => $attempt,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            if ($attempt < $retries && in_array($response->status(), [429, 500, 503])) {
+                sleep(1);
+                continue;
+            }
+
+            $errorMessage = $responseData['error'] ?? 'Failed to process request';
+            if ($response->status() === 403 && strpos($errorMessage, 'provide subscription ID') !== false) {
+                $errorMessage = 'Invalid or missing subscription ID';
+            }
+
+            return ['error' => $errorMessage, 'status' => $response->status()];
+        }
+
+        return ['error' => 'Request failed after retries', 'status' => 500];
+    }
+
     public function getAllCustomers(Request $request): JsonResponse
     {
         try {
@@ -348,10 +406,36 @@ class CustomerController extends Controller
                 'number_of_orders' => $customer['numberOfOrders'],
             ]);
 
+            // Fetch all subscriptions for the customer
+            $seal_query = ['query' => $email];
+            $subData = $this->sealRequest('get', 'subscriptions', [], $seal_query);
+
+            if (isset($subData['error'])) {
+                Log::error('Seal API error in getSubscriptions:', [
+                    'error' => $subData['error'],
+                    'status' => $subData['status'],
+                ]);
+                return response()->json(['success' => false, 'error' => $subData['error']], $subData['status']);
+            }
+
+            $subscriptions = $subData['payload']['subscriptions'] ?? [];
+
+            $filteredSubscriptions = array_filter($subscriptions, function ($sub) use ($email) {
+                return strtolower($sub['email']) === strtolower($email);
+            });
+
+            Log::info('Filtered subscriptions:', [
+                'email' => $email,
+                'count' => count($filteredSubscriptions),
+                'subscriptions' => array_map(function ($sub) {
+                    return ['id' => $sub['id'], 'email' => $sub['email'], 'status' => $sub['status']];
+                }, $filteredSubscriptions),
+            ]);
+
             // Transform the response to match Next.js expectations
             return response()->json([
                 'success' => true,
-                'customer' => [
+                'data' => [
                     'email' => $customer['email'],
                     'name' => trim(($customer['firstName'] ?? '') . ' ' . ($customer['lastName'] ?? '')),
                     'id' => $customer['id'],
@@ -369,6 +453,7 @@ class CustomerController extends Controller
                     'addresses' => $customer['addresses'],
                     'defaultAddress' => $customer['defaultAddress'],
                 ],
+                'subscriptions' => array_values($filteredSubscriptions)
             ], 200);
 
         } catch (\Exception $e) {

@@ -18,59 +18,63 @@ export interface subscriptionsResponse {
   [key: string]: any;
 }
 
+interface CustomerData {
+  email: string;
+  name: string;
+  id: string;
+  phone: string | null;
+  createdAt: string;
+  updatedAt: string;
+  numberOfOrders: number;
+  orders: Array<{
+    id: string;
+    name: string;
+    processedAt: string;
+    totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+  }>;
+  state: string;
+  amountSpent: { amount: string; currencyCode: string };
+  verifiedEmail: boolean;
+  taxExempt: boolean;
+  tags: string[];
+  addresses: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    address1: string;
+    city: string;
+    province: string | null;
+    country: string;
+    zip: string;
+    phone: string | null;
+    name: string;
+    provinceCode: string | null;
+    countryCodeV2: string;
+  }>;
+  defaultAddress: {
+    id: string;
+    address1: string;
+    city: string;
+    province: string | null;
+    country: string;
+    zip: string;
+    phone: string | null;
+    provinceCode: string | null;
+    countryCodeV2: string;
+  };
+  image: {
+    id: string | null;
+    url: string;
+    width: number | null;
+    height: number | null;
+  } | null;
+}
+
 export interface customerResponse {
   success: boolean;
   message?: string;
-  customer?: {
-    email: string;
-    name: string;
-    id: string;
-    phone: string | null;
-    createdAt: string;
-    updatedAt: string;
-    numberOfOrders: number;
-    orders: Array<{
-      id: string;
-      name: string;
-      processedAt: string;
-      totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
-    }>;
-    image: {
-      id: string;
-      url: string;
-      [key: string]: any;
-    };
-    state: string;
-    amountSpent: { amount: string; currencyCode: string };
-    verifiedEmail: boolean;
-    taxExempt: boolean;
-    tags: string[];
-    addresses: Array<{
-      id: string;
-      firstName: string;
-      lastName: string;
-      address1: string;
-      city: string;
-      province: string | null;
-      country: string;
-      zip: string;
-      phone: string | null;
-      name: string;
-      provinceCode: string | null;
-      countryCodeV2: string;
-    }>;
-    defaultAddress: {
-      id: string;
-      address1: string;
-      city: string;
-      province: string | null;
-      country: string;
-      zip: string;
-      phone: string | null;
-      provinceCode: string | null;
-      countryCodeV2: string;
-    };
-  };
+  subscriptions: Subscription[];
+  data?: CustomerData;
   error?: string;
 }
 
